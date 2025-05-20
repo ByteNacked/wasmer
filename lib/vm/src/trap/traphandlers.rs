@@ -916,10 +916,17 @@ fn on_wasm_stack<F: FnOnce() -> T, T>(
     lazy_static::lazy_static! {
         static ref STACK_POOL: crossbeam_queue::SegQueue<DefaultStack> = crossbeam_queue::SegQueue::new();
     }
+
+    #[cfg(not(windows))]
     let stack = STACK_POOL
         .pop()
         .unwrap_or_else(|| DefaultStack::new(stack_size).unwrap());
+    #[cfg(not(windows))]
     let mut stack = scopeguard::guard(stack, |stack| STACK_POOL.push(stack));
+
+    // HACK: don't reuse coro stack on windows
+    #[cfg(windows)]
+    let mut stack =  scopeguard::guard(DefaultStack::new(stack_size).unwrap(), |_|{});
 
     // Create a coroutine with a new stack to run the function on.
     let mut coro = ScopedCoroutine::with_stack(&mut *stack, move |yielder, ()| {
